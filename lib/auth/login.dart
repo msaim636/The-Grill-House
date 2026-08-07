@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:desk_flow/admin_dashboard/admin_dashboard.dart';
+import 'package:desk_flow/auth/set_profile.dart' show SetProfile;
+import 'package:desk_flow/home/home_screen.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -13,6 +18,8 @@ class _LoginState extends State<Login> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool isNotVisible = true;
+  final supabase = Supabase.instance.client;
+  bool loading = false;
   @override
   void dispose() {
     _email.dispose();
@@ -20,11 +27,99 @@ class _LoginState extends State<Login> {
     super.dispose();
   }
 
+  //login function
+  void login() async {
+    setState(() {
+      loading = true;
+    });
+    try {
+      final result = await supabase.auth.signInWithPassword(
+        email: _email.text,
+        password: _password.text,
+      );
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('role')
+          .eq('id', Supabase.instance.client.auth.currentUser!.id)
+          .single();
+      if (result.user != null &&
+          result.session != null &&
+          data['role'] == 'admin') {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminDashboard()),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+    } catch (e) {
+      print('$e');
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  //continue with google function
+  void continueWithGoogle() async {
+    setState(() {
+      loading = true;
+    });
+    try {
+      final GoogleSignIn signin = GoogleSignIn.instance;
+      await signin.initialize(
+        serverClientId:
+            '238389504942-d0j7lttl3fiduul8scpib8i1sjru7a86.apps.googleusercontent.com',
+        clientId:
+            '238389504942-e66s7f42a9flsmo1rca3rfk4sf7vi65t.apps.googleusercontent.com',
+      );
+
+      final GoogleSignInAccount account = await signin.authenticate();
+      final String? idToken = account.authentication.idToken;
+
+      if (idToken == null) {
+        throw Exception('No ID token received from Google');
+      }
+
+      final authorization = await account.authorizationClient
+          .authorizationForScopes(['email', 'profile']);
+
+      final result = await supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: authorization?.accessToken,
+      );
+
+      if (result.user != null && result.session != null) {
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (context) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Google sign-in error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xffFDF9F5),
-      appBar: AppBar(backgroundColor: Color(0xffFDF9F5), toolbarHeight: 100),
+      backgroundColor: Color(0xffF9F7FC),
+      appBar: AppBar(backgroundColor: Color(0xffF9F7FC), toolbarHeight: 100),
       body: SafeArea(
         child: Form(
           key: formKey,
@@ -152,30 +247,37 @@ class _LoginState extends State<Login> {
                   GestureDetector(
                     onTap: () {
                       if (formKey.currentState!.validate()) {
-                        print('$_email');
-                        print('$_password');
+                        login();
                       } else {
                         print('Form is invalid');
                       }
                     },
-                    child: Container(
-                      height: 50,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Color(0xffF46914),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Login',
-                          style: TextStyle(
-                            fontSize: 17,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
+                    child: loading
+                        ? Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xffF46914),
+                            ),
+                          )
+                        : Container(
+                            height: 50,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xffF95078), Color(0xff863ACF)],
+                              ),
+                              borderRadius: BorderRadius.circular(10000),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Login',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                   SizedBox(height: 15),
                   Row(
@@ -229,7 +331,9 @@ class _LoginState extends State<Login> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: GestureDetector(
-                        onTap: () {},
+                        onTap: () {
+                          continueWithGoogle();
+                        },
                         child: Center(
                           child: Container(
                             child: FaIcon(
@@ -255,6 +359,7 @@ class _LoginState extends State<Login> {
                           'Signup',
                           style: TextStyle(
                             color: Color(0xffF46914),
+
                             fontWeight: FontWeight.bold,
                           ),
                         ),

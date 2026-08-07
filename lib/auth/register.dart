@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:desk_flow/auth/set_profile.dart';
+import 'package:desk_flow/home/home_screen.dart';
 
 class Register extends StatefulWidget {
   const Register({super.key});
@@ -9,12 +12,79 @@ class Register extends StatefulWidget {
 
 class _RegisterState extends State<Register> {
   final TextEditingController _name = TextEditingController();
-  final TextEditingController _email = TextEditingController();
+  static final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirmPassword = TextEditingController();
   final formKey = GlobalKey<FormState>();
   bool isNotVisible = true;
   bool isnotVisible = true;
+  final supabase = Supabase.instance.client;
+  bool loading = false;
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    _confirmPassword.dispose();
+    super.dispose();
+  }
+
+  //signup function
+  void signup() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      if (_password.text != _confirmPassword.text) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Passwords don't match")));
+        return;
+      }
+      final result = await supabase.auth.signUp(
+        email: _email.text.trim(),
+        password: _password.text.trim(),
+        data: {'name': _name.text.trim()},
+      );
+
+      final user = result.user;
+
+      await supabase.from('profiles').insert({
+        'id': user!.id,
+        'full_name': _name.text.trim(),
+        'email': _email.text.trim(),
+        'role': 'user',
+      });
+      if (!mounted) return;
+      if (result.user != null) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
+        );
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -195,8 +265,8 @@ class _RegisterState extends State<Register> {
                           if (value == null || value.isEmpty) {
                             return 'Please Enter Your Password';
                           }
-                          if (value.length < 8) {
-                            return 'Please Enter 8 Digit Password ';
+                          if (_password.text != _confirmPassword.text) {
+                            return "Password doesn't match";
                           }
                           return null;
                         },
@@ -248,35 +318,41 @@ class _RegisterState extends State<Register> {
                     ],
                   ),
                   SizedBox(height: 30),
-                  //Login Button
+                  //Signup Button
                   GestureDetector(
-                    onTap: () {
+                    onTap: () async {
+                      final supabase =
+                          Supabase.instance.client.auth.currentUser;
                       if (formKey.currentState!.validate()) {
-                        print('$_name');
-                        print('$_email');
-                        print('$_password');
+                        signup();
                       } else {
                         print('Form is invalid');
                       }
                     },
-                    child: Container(
-                      height: 50,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Color(0xffF46914),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Sign Up',
-                          style: TextStyle(
-                            fontSize: 17,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
+                    child: loading
+                        ? Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xffF46914),
+                            ),
+                          )
+                        : Container(
+                            height: 50,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Color(0xffF46914),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Sign Up',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                   SizedBox(height: 15),
 
